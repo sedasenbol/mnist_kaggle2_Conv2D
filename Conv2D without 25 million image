@@ -1,0 +1,193 @@
+import numpy as np
+import pandas as pd
+#import statsmodels.api as sm
+#import matplotlib.pyplot as plt
+#import mpl_toolkits
+import tensorflow as tf
+import tensorflow_datasets as tfds
+import os
+os.chdir(r"C:\\Users\ssenb\Desktop\mnist")
+mnist_dataset=pd.read_csv('train.csv')
+from sklearn import preprocessing
+from sklearn import preprocessing
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, BatchNormalization, Dropout, Flatten, Dense
+from tensorflow.keras.callbacks import LearningRateScheduler
+from sklearn.model_selection import train_test_split
+
+# Load the data
+raw_train_csv_data = np.loadtxt('train.csv',delimiter=',',skiprows=1)
+raw_test_csv_data = np.loadtxt('test.csv',delimiter=',',skiprows=1)
+# The inputs are all columns in the csv, except for the first one [:,0]
+# (which is just the arbitrary customer IDs that bear no useful information),
+# and the last one [:,-1] (which is our targets)
+
+unscaled_inputs_train = raw_train_csv_data[:,1:]
+targets_train=raw_train_csv_data[:,0]
+
+
+unscaled_inputs_submission = raw_test_csv_data
+
+# The targets are in the last column. That's how datasets are conventionally organized.
+
+scaled_inputs_train = preprocessing.scale(unscaled_inputs_train)
+scaled_inputs_submission=preprocessing.scale(unscaled_inputs_submission)
+
+samples_count=unscaled_inputs_train.shape[0]
+submission_samples_count=unscaled_inputs_submission.shape[0]
+
+
+
+validation_samples_count = int(0.1 * samples_count)
+train_samples_count = int(0.8 * samples_count)
+test_samples_count = samples_count - train_samples_count - validation_samples_count
+
+
+train_inputs = scaled_inputs_train[:train_samples_count]
+train_targets = targets_train[:train_samples_count]
+
+validation_inputs = scaled_inputs_train[train_samples_count:train_samples_count+validation_samples_count]
+validation_targets = targets_train[train_samples_count:train_samples_count+validation_samples_count]
+
+test_inputs = scaled_inputs_train[train_samples_count+validation_samples_count:]
+test_targets = targets_train[train_samples_count+validation_samples_count:]
+
+#print(np.sum(train_targets), train_samples_count, np.sum(train_targets) / train_samples_count)
+#print(np.sum(validation_targets), validation_samples_count, np.sum(validation_targets) / validation_samples_count)
+#print(np.sum(targets_test), test_samples_count, np.sum(targets_test) / test_samples_count)
+
+np.savez('mnist_data_train', inputs=train_inputs, targets=train_targets)
+np.savez('mnist_data_validation', inputs=validation_inputs, targets=validation_targets)
+np.savez('mnist_data_test', inputs=test_inputs, targets=test_targets)
+
+npz = np.load('mnist_data_train.npz')
+
+# we extract the inputs using the keyword under which we saved them
+# to ensure that they are all floats, let's also take care of that
+train_inputs = npz['inputs'].astype(np.float)
+# targets must be int because of sparse_categorical_crossentropy (we want to be able to smoothly one-hot encode them)
+train_targets = npz['targets'].astype(np.int)
+
+# we load the validation data in the temporary variable
+npz = np.load('mnist_data_validation.npz')
+# we can load the inputs and the targets in the same line
+validation_inputs, validation_targets = npz['inputs'].astype(np.float), npz['targets'].astype(np.int)
+
+# we load the test data in the temporary variable
+npz = np.load('mnist_data_test.npz')
+# we create 2 variables that will contain the test inputs and the test targets
+test_inputs, test_targets = npz['inputs'].astype(np.float), npz['targets'].astype(np.int)
+
+
+
+#train_inputs = train_inputs.reshape(train_inputs.shape + (1,))
+#train_targets = train_targets.reshape(train_targets.shape + (1,))
+#validation_inputs = validation_inputs.reshape(validation_inputs.shape + (1,))
+#validation_targets = validation_targets.reshape(validation_targets.shape + (1,))
+
+train_inputs=np.expand_dims(train_inputs,1)
+train_targets=np.expand_dims(train_targets,1)
+validation_inputs=np.expand_dims(validation_inputs,1)
+validation_targets=np.expand_dims(validation_targets,1)
+test_inputs=np.expand_dims(test_inputs,1)
+test_targets=np.expand_dims(test_targets,1)
+unscaled_inputs_submission=np.expand_dims(unscaled_inputs_submission,1)
+
+train_inputs=np.expand_dims(train_inputs,1)
+train_targets=np.expand_dims(train_targets,1)
+validation_inputs=np.expand_dims(validation_inputs,1)
+validation_targets=np.expand_dims(validation_targets,1)
+test_inputs=np.expand_dims(test_inputs,1)
+test_targets=np.expand_dims(test_targets,1)
+unscaled_inputs_submission=np.expand_dims(unscaled_inputs_submission,1)
+
+input_size = 784 
+output_size = 10
+
+hidden_layer_size = 50
+callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3)
+
+model = tf.keras.Sequential([
+    
+    # the first layer (the input layer)
+    # each observation is 28x28x1 pixels, therefore it is a tensor of rank 3
+    # since we don't know CNNs yet, we don't know how to feed such input into our net, so we must flatten the images
+    # there is a convenient method 'Flatten' that simply takes our 28x28x1 tensor and orders it into a (None,) 
+    # or (28x28x1,) = (784,) vector
+    # this allows us to actually create a feed forward neural network
+    
+    Conv2D(32, kernel_size = 3, activation='relu',padding='same'),
+    tf.keras.layers.BatchNormalization(),
+    Conv2D(32, kernel_size = 3, activation='relu',padding='same'),
+    tf.keras.layers.BatchNormalization(),
+    Conv2D(32, kernel_size = 5, strides=2, activation='relu',padding='same'),
+    BatchNormalization(),
+    Dropout(0.4),
+
+    Conv2D(64, kernel_size = 3, activation='relu',padding='same'),
+    BatchNormalization(),
+    Conv2D(64, kernel_size = 3, activation='relu',padding='same'),
+    BatchNormalization(),
+    Conv2D(64, kernel_size = 5, strides=2, activation='relu',padding='same'),
+    BatchNormalization(),
+    Dropout(0.4),
+
+    Conv2D(128, kernel_size = 4, activation='relu',padding='same'),
+    BatchNormalization(),
+    Flatten(),
+    Dropout(0.4),
+    Dense(10, activation='softmax'),
+])
+
+model.compile(optimizer="adam", loss="SparseCategoricalCrossentropy", metrics=["accuracy"])
+NUM_EPOCHS = 20
+
+
+model.fit(train_inputs,train_targets, epochs=NUM_EPOCHS, validation_data=(validation_inputs, validation_targets),callbacks=[callback], verbose =2)
+
+test_loss, test_accuracy = model.evaluate(test_inputs,test_targets)
+print('Test loss: {0:.2f}. Test accuracy: {1:.2f}%'.format(test_loss, test_accuracy*100.))
+
+dataframe=pd.DataFrame(columns=['ImageId','Label'])
+dataframe['ImageId']=range(1,28001)
+submission=model.predict(unscaled_inputs_submission,batch_size=100,verbose=1)
+print(np.argmax(submission, axis = 1))
+
+
+submission=model.predict(test_inputs,batch_size=100,verbose=1)
+error = np.mean(test_targets!=np.argmax(submission, axis = 1))
+print (error)
+
+print(np.argmax(submission, axis = 1)[:100])
+print(test_targets[:100])
+
+
+dataframe['Label'] = np.argmax(submission, axis = 1)
+
+print (dataframe)
+df=pd.DataFrame(dataframe)
+df.to_csv(index=False)
+compression_opts = dict(method='zip',
+                        archive_name='out.csv')  
+df.to_csv('out2.zip', index=False,
+          compression=compression_opts)  
+
+"""
+print(submission[0][:])
+
+
+dataframe=pd.DataFrame(columns=['ImageId','Label'])
+dataframe['ImageId']=range(1,28001)
+print (dataframe)
+df=np.array(dataframe)
+
+for j in range(28000):
+    max=0
+    for i in range (10):
+        if submission[j][i]>max:
+            max=submission[j][i]
+            df[j][1]=i
+
+print (submission[10000:11100])
+"""
